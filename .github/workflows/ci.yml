@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # Real Postgres so the release-blocking RLS spike actually runs (it needs a
+    # non-superuser role — RLS never constrains superusers).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Non-superuser app role → subject to FORCE RLS, like Render.
+      DATABASE_URL: postgresql://physio_app:app@localhost:5432/physio
+      DIRECT_URL: postgresql://physio_app:app@localhost:5432/physio
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Provision non-superuser role + database
+        run: |
+          psql "postgresql://postgres:postgres@localhost:5432/postgres" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE physio_app LOGIN PASSWORD 'app';
+          CREATE DATABASE physio OWNER physio_app;
+          SQL
+          psql "postgresql://postgres:postgres@localhost:5432/physio" -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER SCHEMA public OWNER TO physio_app;
+          GRANT ALL ON SCHEMA public TO physio_app;
+          SQL
+
+      - run: pnpm -r build
+      - name: Apply migrations (RLS policies)
+        run: pnpm --filter @physio/db exec prisma migrate deploy
+      - run: pnpm -r typecheck
+      - run: pnpm -r lint
+      - run: pnpm -r test # RLS spike runs here against the provisioned DB

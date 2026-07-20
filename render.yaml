@@ -1,0 +1,124 @@
+# Render Blueprint — source of truth for services + env groups.
+# Update this whenever a service is added. See build-kit §1–§2.
+databases:
+  - name: physio-postgres
+    databaseName: physio
+    plan: basic-256mb
+    region: oregon
+
+services:
+  # Redis-compatible cache + BullMQ queue
+  - type: keyvalue
+    name: physio-keyvalue
+    plan: starter
+    region: oregon
+    ipAllowList: [] # only internal connections
+
+  # NestJS API (long-running web service)
+  - type: web
+    name: physio-api
+    runtime: node
+    region: oregon
+    plan: starter
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @physio/db build && pnpm --filter @physio/shared build && pnpm --filter @physio/api build
+    startCommand: pnpm --filter @physio/api start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: physio-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: physio-keyvalue
+          property: connectionString
+      - fromGroup: physio-secrets
+
+  # BullMQ background worker (same build as api, worker entrypoint)
+  - type: worker
+    name: physio-worker
+    runtime: node
+    region: oregon
+    plan: starter
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @physio/db build && pnpm --filter @physio/shared build && pnpm --filter @physio/api build
+    startCommand: pnpm --filter @physio/api worker
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: physio-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: physio-keyvalue
+          property: connectionString
+      - fromGroup: physio-secrets
+
+  # Nightly sweeps (mark stale appointments NO_SHOW, etc.)
+  - type: cron
+    name: physio-nightly-sweep
+    runtime: node
+    region: oregon
+    plan: starter
+    schedule: "0 6 * * *" # 06:00 UTC = midnight CR
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @physio/db build && pnpm --filter @physio/shared build && pnpm --filter @physio/api build
+    startCommand: pnpm --filter @physio/api worker
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: physio-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: physio-keyvalue
+          property: connectionString
+      - fromGroup: physio-secrets
+
+  # Vue SPA (static site, global CDN)
+  - type: web
+    runtime: static
+    name: physio-web
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @physio/shared build && pnpm --filter @physio/web build
+    staticPublishPath: apps/web/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - fromGroup: physio-web-public
+
+envVarGroups:
+  # API/worker secrets — set real values in the Render dashboard.
+  - name: physio-secrets
+    envVars:
+      - key: WEB_ORIGIN
+      - key: DIRECT_URL
+      - key: CLERK_SECRET_KEY
+      - key: CLERK_WEBHOOK_SECRET
+      - key: S3_ENDPOINT
+      - key: S3_BUCKET
+      - key: S3_ACCESS_KEY_ID
+      - key: S3_SECRET_ACCESS_KEY
+      - key: RESEND_API_KEY
+      - key: TWILIO_ACCOUNT_SID
+      - key: TWILIO_AUTH_TOKEN
+      - key: WHATSAPP_TOKEN
+      - key: WHATSAPP_PHONE_NUMBER_ID
+      - key: ONVO_API_KEY
+      - key: ONVO_WEBHOOK_SECRET
+      - key: ONVO_BASE_URL
+      - key: SENTRY_DSN
+  # Web build-time public vars (VITE_*).
+  - name: physio-web-public
+    envVars:
+      - key: VITE_API_URL
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+      - key: VITE_SENTRY_DSN

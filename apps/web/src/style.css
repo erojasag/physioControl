@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens — DESIGN_SYSTEM.md §6. Source of truth mirrored in tailwind.config.js. */
+:root {
+  /* brand */
+  --green-900: #123d2d;
+  --green-700: #1a684e;
+  --green-600: #1f7a5c;
+  --green-300: #cdead9;
+  --green-100: #e8f2ec;
+  --green-050: #f0f7f3;
+  /* accent */
+  --sun-500: #f2b134;
+  --sun-300: #fbdd94;
+  --coral-500: #e0785a;
+  --coral-100: #fbe6de;
+  /* neutral */
+  --ink-900: #1b201c;
+  --slate-700: #33403a;
+  --gray-500: #55605a;
+  --gray-400: #8a938c;
+  --line-300: #d9dcd5;
+  --line-200: #e1e0d8;
+  --line-100: #ece9e0;
+  --paper-100: #f7f6f2;
+  --paper-050: #fbfbf9;
+  --white: #ffffff;
+  /* semantic */
+  --success: #1f7a5c;
+  --success-bg: #e2f0e8;
+  --warning: #9a6b00;
+  --warning-bg: #fbefd0;
+  --danger: #b23b3b;
+  --danger-bg: #fbeceb;
+  --info: #2b6cb0;
+  --info-bg: #e4eefa;
+  /* type */
+  --font-sans: "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  /* radius */
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+  /* elevation */
+  --shadow-sm: 0 1px 3px rgba(27, 32, 28, 0.06);
+  --shadow-md: 0 4px 14px rgba(27, 32, 28, 0.1);
+  --shadow-lg: 0 12px 30px rgba(27, 32, 28, 0.16);
+  --shadow-brand: 0 4px 14px rgba(31, 122, 92, 0.24);
+  --focus-ring: 0 0 0 3px #dcefe4;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--paper-100);
+  color: var(--ink-900);
+  text-wrap: pretty;
+}

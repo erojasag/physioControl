@@ -1,0 +1,303 @@
+// PhysioSaaS Prisma schema — build-kit §5.
+// Every tenant-owned table carries tenantId and is protected by Postgres RLS (§6).
+// RLS policies + the double-booking exclusion constraint are added via raw SQL
+// migrations (Prisma cannot generate them).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------- Tenancy & identity ----------
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique // used in /book/:clinicSlug
+  timezone  String   @default("America/Costa_Rica")
+  createdAt DateTime @default(now())
+
+  users        User[]
+  patients     Patient[]
+  appointments Appointment[]
+  subscription Subscription?
+}
+
+enum Role {
+  OWNER
+  CLINIC_ADMIN
+  PRACTITIONER
+  FRONT_DESK
+  READ_ONLY
+}
+
+model User {
+  id             String   @id @default(cuid())
+  clerkUserId    String   @unique // link to Clerk identity
+  tenantId       String
+  role           Role     @default(PRACTITIONER)
+  name           String
+  email          String
+  isPractitioner Boolean  @default(true)
+  color          String? // calendar color
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  availability Availability[]
+  appointments Appointment[]  @relation("PractitionerAppointments")
+
+  @@index([tenantId])
+}
+
+// ---------- Patients & consent ----------
+model Patient {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  phone     String?
+  email     String?
+  dob       DateTime?
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  consents     Consent[]
+  appointments Appointment[]
+
+  @@index([tenantId])
+}
+
+model Consent {
+  id            String    @id @default(cuid())
+  tenantId      String
+  patientId     String
+  purpose       String // "treatment" | "reminders" | ...
+  noticeVersion String
+  grantedAt     DateTime  @default(now())
+  withdrawnAt   DateTime?
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([tenantId])
+}
+
+// ---------- Scheduling ----------
+model Service {
+  id          String  @id @default(cuid())
+  tenantId    String
+  name        String
+  durationMin Int
+  priceCents  Int
+  currency    String  @default("CRC")
+  active      Boolean @default(true)
+
+  @@index([tenantId])
+}
+
+model Resource {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String
+
+  @@index([tenantId])
+}
+
+model Availability {
+  id             String @id @default(cuid())
+  tenantId       String
+  practitionerId String
+  weekday        Int // 0-6
+  startMinute    Int // minutes from midnight, clinic-local
+  endMinute      Int
+
+  practitioner User @relation(fields: [practitionerId], references: [id])
+
+  @@index([tenantId])
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentSource {
+  STAFF
+  SELF_BOOKING
+}
+
+model Appointment {
+  id             String            @id @default(cuid())
+  tenantId       String
+  patientId      String
+  practitionerId String
+  resourceId     String?
+  serviceId      String?
+  startsAt       DateTime // stored UTC
+  endsAt         DateTime
+  status         AppointmentStatus @default(BOOKED)
+  source         AppointmentSource @default(STAFF)
+  createdAt      DateTime          @default(now())
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  patient      Patient        @relation(fields: [patientId], references: [id])
+  practitioner User           @relation("PractitionerAppointments", fields: [practitionerId], references: [id])
+  note         ClinicalNote?
+  charge       PatientCharge?
+  reminders    Reminder[]
+
+  // double-booking prevented via a Postgres exclusion constraint (raw SQL migration)
+  @@index([tenantId, practitionerId, startsAt])
+  @@index([tenantId, startsAt])
+}
+
+// ---------- Clinical notes (EMR-lite) ----------
+model ClinicalNote {
+  id            String   @id @default(cuid())
+  tenantId      String
+  appointmentId String   @unique
+  patientId     String
+  authorId      String
+  soap          Json // {subjective, objective, assessment, plan}
+  createdAt     DateTime @default(now())
+
+  appointment Appointment     @relation(fields: [appointmentId], references: [id])
+  amendments  NoteAmendment[]
+  attachments Attachment[]
+
+  @@index([tenantId, patientId])
+}
+
+model NoteAmendment {
+  id        String   @id @default(cuid())
+  tenantId  String
+  noteId    String
+  authorId  String
+  soap      Json
+  createdAt DateTime @default(now())
+
+  note ClinicalNote @relation(fields: [noteId], references: [id])
+
+  @@index([tenantId])
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  tenantId    String
+  patientId   String
+  noteId      String?
+  storageKey  String // R2/S3 object key (private)
+  filename    String
+  contentType String
+  createdAt   DateTime @default(now())
+
+  note ClinicalNote? @relation(fields: [noteId], references: [id])
+
+  @@index([tenantId, patientId])
+}
+
+// ---------- Patient billing (per-visit, one-off ONLY) ----------
+enum ChargeStatus {
+  PENDING
+  PAID
+  VOID
+}
+
+enum ChargeMethod {
+  CASH
+  SINPE
+  CARD
+  ONVO_LINK
+}
+
+model PatientCharge {
+  id                  String        @id @default(cuid())
+  tenantId            String
+  appointmentId       String        @unique
+  patientId           String
+  amountCents         Int
+  currency            String        @default("CRC")
+  status              ChargeStatus  @default(PENDING)
+  method              ChargeMethod?
+  onvoPaymentIntentId String?
+  paidAt              DateTime?
+  createdAt           DateTime      @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+
+  @@index([tenantId, status])
+}
+
+// ---------- OUR subscription billing (recurring) ----------
+enum PlanTier {
+  TRIAL
+  STARTER
+  PRO
+}
+
+enum SubStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+model Subscription {
+  id                 String    @id @default(cuid())
+  tenantId           String    @unique
+  tier               PlanTier  @default(TRIAL)
+  status             SubStatus @default(TRIALING)
+  seats              Int       @default(1)
+  trialEndsAt        DateTime?
+  currentPeriodEnd   DateTime?
+  onvoCustomerId     String?
+  onvoSubscriptionId String?
+  updatedAt          DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+}
+
+// ---------- Cross-cutting ----------
+model Reminder {
+  id            String    @id @default(cuid())
+  tenantId      String
+  appointmentId String
+  channel       String // "whatsapp" | "email" | "sms"
+  scheduledFor  DateTime
+  sentAt        DateTime?
+  status        String    @default("scheduled")
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+
+  @@index([tenantId])
+}
+
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  provider    String // "onvo" | "clerk"
+  eventId     String
+  type        String
+  processedAt DateTime @default(now())
+
+  @@unique([provider, eventId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  actorUserId String?
+  action      String // "note.viewed", "patient.exported"…
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
