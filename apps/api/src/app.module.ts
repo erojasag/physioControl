@@ -9,8 +9,11 @@ import { ClerkAuthGuard } from "./common/clerk-auth.guard";
 import { TenantContextMiddleware } from "./common/tenant-context.middleware";
 import { HealthController } from "./health.controller";
 import { IdentityController } from "./modules/identity/identity.controller";
+import { PatientsModule } from "./modules/patients/patients.module";
+import { SchedulingModule } from "./modules/scheduling/scheduling.module";
 
 @Module({
+  imports: [PatientsModule, SchedulingModule],
   controllers: [HealthController, IdentityController],
   providers: [
     AuditService,
