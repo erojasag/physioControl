@@ -108,6 +108,7 @@ envVarGroups:
       - key: S3_ACCESS_KEY_ID
       - key: S3_SECRET_ACCESS_KEY
       - key: RESEND_API_KEY
+      - key: RESEND_FROM
       - key: TWILIO_ACCOUNT_SID
       - key: TWILIO_AUTH_TOKEN
       - key: WHATSAPP_TOKEN

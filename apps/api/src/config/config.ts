@@ -34,6 +34,7 @@ const schema = z.object({
 
   // Messaging — stub-able in dev
   RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM: z.string().default("PhysioControl <no-reply@physiocontrol.app>"),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   WHATSAPP_TOKEN: z.string().optional(),

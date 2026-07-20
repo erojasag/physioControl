@@ -1,29 +1,45 @@
 import "reflect-metadata";
+import { Logger } from "@nestjs/common";
+import { NestFactory } from "@nestjs/core";
 import { Worker } from "bullmq";
-import IORedis from "ioredis";
+import { AppModule } from "./app.module";
 import { loadConfig } from "./config/config";
+import {
+  REMINDERS_QUEUE,
+  type ReminderJob,
+} from "./jobs/reminders.contract";
+import { makeRedisConnection } from "./jobs/redis";
+import { ReminderProcessorService } from "./modules/notifications/reminder-processor.service";
 
-// BullMQ background worker entrypoint. Same build/image as the API (shares Prisma
-// models + code). Owns reminders, dunning, webhook processing, exports, sweeps.
-// Processors are registered in build order steps 5+ — this is the scaffold shell.
+// BullMQ background worker. Same build/image as the API; boots a Nest application
+// context (no HTTP) to reuse DI — config, Prisma, mailer, processors.
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
-  const connection = new IORedis(config.REDIS_URL, {
-    maxRetriesPerRequest: null,
-  });
+  const log = new Logger("worker");
 
-  // Placeholder queue so the process has something to run; real queues added later.
-  const worker = new Worker(
-    "system",
-    async (job) => {
-      return { handled: job.name };
-    },
-    { connection },
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ["error", "warn", "log"],
+  });
+  const processor = app.get(ReminderProcessorService);
+
+  const worker = new Worker<ReminderJob>(
+    REMINDERS_QUEUE,
+    async (job) => processor.process(job.data.reminderId),
+    { connection: makeRedisConnection() },
   );
 
-  worker.on("ready", () => {
-    console.log("[worker] ready");
-  });
+  worker.on("failed", (job, err) =>
+    log.error(`reminder job ${job?.id} failed: ${err.message}`),
+  );
+  worker.on("ready", () => log.log(`ready (env=${config.NODE_ENV})`));
+
+  const shutdown = async (): Promise<void> => {
+    await worker.close();
+    await app.close();
+    process.exit(0);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
 
 void bootstrap();

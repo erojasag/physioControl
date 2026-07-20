@@ -9,6 +9,7 @@ import type {
   CreateBookingInput,
   PublicClinicDto,
 } from "@physio/shared";
+import { ReminderSchedulerService } from "../notifications/reminder-scheduler.service";
 
 // Public self-booking. The clinic is resolved from the URL slug server-side via
 // systemDb (Tenant has no RLS); every subsequent write runs inside that tenant's
@@ -20,6 +21,8 @@ import type {
 // Key Value / IP throttle before launch (build-kit §8). Noted, not built.
 @Injectable()
 export class BookingService {
+  constructor(private readonly reminders: ReminderSchedulerService) {}
+
   async getClinic(slug: string): Promise<PublicClinicDto> {
     const tenant = await this.resolveTenant(slug);
     const practitioners = await runWithTenantContext(
@@ -79,6 +82,11 @@ export class BookingService {
               status: "BOOKED",
               source: "SELF_BOOKING",
             },
+          });
+          await this.reminders.scheduleForAppointment({
+            id: appt.id,
+            tenantId: tenant.id,
+            startsAt: appt.startsAt,
           });
           return {
             appointmentId: appt.id,

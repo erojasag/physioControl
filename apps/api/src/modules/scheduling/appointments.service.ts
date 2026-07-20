@@ -13,6 +13,7 @@ import {
   type UpdateAppointmentStatusInput,
 } from "@physio/shared";
 import { DateTime } from "luxon";
+import { ReminderSchedulerService } from "../notifications/reminder-scheduler.service";
 
 type AppointmentRow = {
   id: string;
@@ -29,6 +30,8 @@ const INCLUDE = { patient: { select: { name: true } } } as const;
 
 @Injectable()
 export class AppointmentsService {
+  constructor(private readonly reminders: ReminderSchedulerService) {}
+
   async create(input: CreateAppointmentInput): Promise<AppointmentDto> {
     const tenantId = requireTenantId();
 
@@ -45,8 +48,9 @@ export class AppointmentsService {
       );
     }
 
+    let appt: AppointmentRow;
     try {
-      const appt = (await db.appointment.create({
+      appt = (await db.appointment.create({
         data: {
           tenantId,
           patientId: input.patientId,
@@ -58,7 +62,6 @@ export class AppointmentsService {
         },
         include: INCLUDE,
       })) as AppointmentRow;
-      return toDto(appt);
     } catch (err) {
       if (isOverlapViolation(err)) {
         throw new ConflictException(
@@ -67,6 +70,13 @@ export class AppointmentsService {
       }
       throw err;
     }
+
+    await this.reminders.scheduleForAppointment({
+      id: appt.id,
+      tenantId,
+      startsAt: appt.startsAt,
+    });
+    return toDto(appt);
   }
 
   async updateStatus(
@@ -90,6 +100,9 @@ export class AppointmentsService {
       data: { status: input.status },
       include: INCLUDE,
     })) as AppointmentRow;
+    if (input.status === "CANCELLED") {
+      await this.reminders.cancelForAppointment(id);
+    }
     return toDto(updated);
   }
 
