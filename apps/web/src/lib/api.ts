@@ -1,9 +1,12 @@
 import type {
   AppointmentDto,
+  BookingResultDto,
   CreateAppointmentInput,
+  CreateBookingInput,
   CreatePatientInput,
   PatientDto,
   PractitionerDto,
+  PublicClinicDto,
   UpdateAppointmentStatusInput,
 } from "@physio/shared";
 import { config } from "@/config";
@@ -62,6 +65,15 @@ export const api = {
   ) =>
     request<AppointmentDto>(`/appointments/${id}/status`, token, {
       method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  // Public (no token) self-booking.
+  getClinic: (slug: string) =>
+    request<PublicClinicDto>(`/book/${slug}`, null),
+  book: (slug: string, body: CreateBookingInput) =>
+    request<BookingResultDto>(`/book/${slug}`, null, {
+      method: "POST",
       body: JSON.stringify(body),
     }),
 };

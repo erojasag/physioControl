@@ -5,3 +5,4 @@ export * from "./dto/appointment";
 export * from "./dto/practitioner";
 export * from "./dto/availability";
 export * from "./dto/resource";
+export * from "./dto/booking";
