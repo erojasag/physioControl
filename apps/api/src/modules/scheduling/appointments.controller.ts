@@ -1,15 +1,19 @@
-import { Body, Controller, Get, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { createZodDto } from "nestjs-zod";
 import {
   CreateAppointmentSchema,
   ListAppointmentsQuerySchema,
+  UpdateAppointmentStatusSchema,
 } from "@physio/shared";
 import { AppointmentsService } from "./appointments.service";
 
 class CreateAppointmentDto extends createZodDto(CreateAppointmentSchema) {}
 class ListAppointmentsQueryDto extends createZodDto(
   ListAppointmentsQuerySchema,
+) {}
+class UpdateAppointmentStatusDto extends createZodDto(
+  UpdateAppointmentStatusSchema,
 ) {}
 
 @ApiTags("scheduling")
@@ -24,6 +28,14 @@ export class AppointmentsController {
 
   @Get()
   list(@Query() query: ListAppointmentsQueryDto) {
-    return this.appointments.listByDay(query.date);
+    return this.appointments.list(query);
+  }
+
+  @Patch(":id/status")
+  updateStatus(
+    @Param("id") id: string,
+    @Body() body: UpdateAppointmentStatusDto,
+  ) {
+    return this.appointments.updateStatus(id, body);
   }
 }

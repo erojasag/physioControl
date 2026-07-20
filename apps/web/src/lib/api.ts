@@ -3,6 +3,8 @@ import type {
   CreateAppointmentInput,
   CreatePatientInput,
   PatientDto,
+  PractitionerDto,
+  UpdateAppointmentStatusInput,
 } from "@physio/shared";
 import { config } from "@/config";
 
@@ -44,11 +46,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  listPractitioners: (token: string | null) =>
+    request<PractitionerDto[]>("/practitioners", token),
   listAppointments: (token: string | null, date: string) =>
     request<AppointmentDto[]>(`/appointments?date=${date}`, token),
   createAppointment: (token: string | null, body: CreateAppointmentInput) =>
     request<AppointmentDto>("/appointments", token, {
       method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateAppointmentStatus: (
+    token: string | null,
+    id: string,
+    body: UpdateAppointmentStatusInput,
+  ) =>
+    request<AppointmentDto>(`/appointments/${id}/status`, token, {
+      method: "PATCH",
       body: JSON.stringify(body),
     }),
 };

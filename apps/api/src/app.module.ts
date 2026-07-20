@@ -8,13 +8,13 @@ import { AuditService } from "./common/audit.service";
 import { ClerkAuthGuard } from "./common/clerk-auth.guard";
 import { TenantContextMiddleware } from "./common/tenant-context.middleware";
 import { HealthController } from "./health.controller";
-import { IdentityController } from "./modules/identity/identity.controller";
+import { IdentityModule } from "./modules/identity/identity.module";
 import { PatientsModule } from "./modules/patients/patients.module";
 import { SchedulingModule } from "./modules/scheduling/scheduling.module";
 
 @Module({
-  imports: [PatientsModule, SchedulingModule],
-  controllers: [HealthController, IdentityController],
+  imports: [IdentityModule, PatientsModule, SchedulingModule],
+  controllers: [HealthController],
   providers: [
     AuditService,
     { provide: APP_GUARD, useClass: ClerkAuthGuard },
